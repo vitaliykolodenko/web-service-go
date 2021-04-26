@@ -2,28 +2,30 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type Product struct {
-	ProductId int `json:"productId"`
-	Manufacturer string `json:"manufacturer"`
-	Sku string `json:"sku"`
-	Upc string `json:"upc"`
-	PricePerUnit string `json:"pricePerUnit"`
-	QuantityOnHand int `json:"quantityOnHand"`
-	ProductName string `json:"productName"`
+	ProductId      int    `json:"productId"`
+	Manufacturer   string `json:"manufacturer"`
+	Sku            string `json:"sku"`
+	Upc            string `json:"upc"`
+	PricePerUnit   string `json:"pricePerUnit"`
+	QuantityOnHand int    `json:"quantityOnHand"`
+	ProductName    string `json:"productName"`
 }
 
 var productList []Product
 
-func Init(){
+func Init() {
 	productsJson :=
-	`[
+		`[
 		{
 			"productId" : 1,
 			"manufacturer" : "Sony",
@@ -59,11 +61,11 @@ func Init(){
 	}
 }
 
-func productsHandler(w http.ResponseWriter, r *http.Request){
+func productsHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		productsJson, err := json.Marshal(productList)
-		if err != nil{
+		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -73,18 +75,18 @@ func productsHandler(w http.ResponseWriter, r *http.Request){
 		}
 	case http.MethodPost:
 		bodyBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil{
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
 		var newProduct Product
 		err = json.Unmarshal(bodyBytes, &newProduct)
-		if err != nil{
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if newProduct.ProductId != 0{
+		if newProduct.ProductId != 0 {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
@@ -96,9 +98,9 @@ func productsHandler(w http.ResponseWriter, r *http.Request){
 
 func productHandler(w http.ResponseWriter, r *http.Request) {
 	urlPathSegments := strings.Split(r.URL.Path, "products/")
-	productId, err := strconv.Atoi(urlPathSegments[len(urlPathSegments) - 1])
+	productId, err := strconv.Atoi(urlPathSegments[len(urlPathSegments)-1])
 
-	if err != nil{
+	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 	}
 
@@ -109,14 +111,14 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		prodJson, err := json.Marshal(product)
-		if err != nil{
+		if err != nil {
 			log.Printf("Unable to serialize product", err)
 		}
 		w.Header().Set("Content-type", "application/json")
 		_, err = w.Write(prodJson)
 	case http.MethodPut:
 		productBytes, err := ioutil.ReadAll(r.Body)
-		if err != nil{
+		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 		}
 		var updatedProduct Product
@@ -126,7 +128,7 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusBadRequest)
 		}
 
-		if product.ProductId != productId{
+		if product.ProductId != productId {
 			w.WriteHeader(http.StatusBadRequest)
 		}
 
@@ -136,15 +138,26 @@ func productHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func findProductById(productId int) (*Product, int){
+func findProductById(productId int) (*Product, int) {
 	return &productList[productId], productId
+}
+
+func middleHandler(handler http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("Before handler start")
+		start := time.Now()
+		handler.ServeHTTP(w, r)
+		fmt.Printf("middleware finished; %s\n", time.Since(start))
+	})
 }
 
 func main() {
 	Init()
 
-	http.HandleFunc("/products", productsHandler)
-	http.HandleFunc("/products/", productHandler)
+	productsListHandler := http.HandlerFunc(productsHandler)
+	productsItemHandler := http.HandlerFunc(productHandler)
+	http.Handle("/products", middleHandler(productsListHandler))
+	http.Handle("/products/", middleHandler(productsItemHandler))
 
 	http.ListenAndServe(":5000", nil)
 }
