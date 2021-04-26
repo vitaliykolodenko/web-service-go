@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
 type Product struct {
@@ -92,10 +94,57 @@ func productsHandler(w http.ResponseWriter, r *http.Request){
 	}
 }
 
+func productHandler(w http.ResponseWriter, r *http.Request) {
+	urlPathSegments := strings.Split(r.URL.Path, "products/")
+	productId, err := strconv.Atoi(urlPathSegments[len(urlPathSegments) - 1])
+
+	if err != nil{
+		w.WriteHeader(http.StatusBadRequest)
+	}
+
+	product, index := findProductById(productId)
+	if product == nil {
+		w.WriteHeader(http.StatusBadRequest)
+	}
+	switch r.Method {
+	case http.MethodGet:
+		prodJson, err := json.Marshal(product)
+		if err != nil{
+			log.Printf("Unable to serialize product", err)
+		}
+		w.Header().Set("Content-type", "application/json")
+		_, err = w.Write(prodJson)
+	case http.MethodPut:
+		productBytes, err := ioutil.ReadAll(r.Body)
+		if err != nil{
+			w.WriteHeader(http.StatusBadRequest)
+		}
+		var updatedProduct Product
+		err = json.Unmarshal(productBytes, &updatedProduct)
+
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+		}
+
+		if product.ProductId != productId{
+			w.WriteHeader(http.StatusBadRequest)
+		}
+
+		productList[index] = updatedProduct
+	default:
+		w.WriteHeader(http.StatusNotImplemented)
+	}
+}
+
+func findProductById(productId int) (*Product, int){
+	return &productList[productId], productId
+}
+
 func main() {
 	Init()
 
 	http.HandleFunc("/products", productsHandler)
+	http.HandleFunc("/products/", productHandler)
 
 	http.ListenAndServe(":5000", nil)
 }
